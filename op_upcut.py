@@ -1,7 +1,7 @@
-import bpy
-import bmesh
-import random, math
+import math
+import bpy, bmesh
 import mathutils
+from mathutils import Vector
 from bl_ext.blender_org.stl_format_legacy import blender_utils
 
 #from .barmesh.basicgeo import I1, Partition1, P3, P2, Along
@@ -9,7 +9,7 @@ from bl_ext.blender_org.stl_format_legacy import blender_utils
 #from barmesh.barmeshslicer import BarMeshSlicer
 #import barmesh.mainfunctions
 
-print("reloading optest ")
+print("reloading opupcut ")
 from . import barmesh
 from .barmesh.basicgeo import I1, Partition1, P3, P2, Along
 from .barmesh.tribarmes import TriangleBarMesh, TriangleBar, MakeTriangleBoxing
@@ -35,8 +35,44 @@ def fetchcreatecollection(name, empty=True):
                 mcoll.objects.unlink(o)
     return mcoll
 
-class TestTest(bpy.types.Operator):
-    bl_idname = "object.furcut_test"
+def placejobmeshobject(collection, name, mesh):
+    print("in placejobmeshobject")
+    i = collection.objects.find(name)
+    if i == -1:
+        mobj = bpy.data.objects.new(name, mesh)
+        collection.objects.link(mobj)
+    else:
+        mobj = collection.objects.objects[i]
+        mobj.data = mesh
+
+    mobj.rotation_mode = 'XYZ'
+    facemax = max((p.area, p)  for p in mobj.data.polygons)[1]
+    if (facemax.normal - Vector((-1,0,0))).length < 1e-6:
+        mobj.rotation_euler = (0,math.radians(-90),0)
+    elif (facemax.normal - Vector((1,0,0))).length < 1e-6:
+        mobj.rotation_euler = (0,math.radians(90),0)
+    else:
+        print("Unknown normal direction ", facemax.normal)
+
+    print("matrix before loc", mobj.matrix_basis)
+    mobj.location = -facemax.center
+    mobj.location.rotate(mobj.rotation_euler)
+    #mobj.rotation_euler.rotate(mathutils.Euler((0,0,math.radians(90))))
+    print("matrix after loc", mobj.matrix_basis)
+    print("location", mobj.location, mobj.rotation_euler)
+
+    # apply the transform (could be used to find the range and minimize it)
+    matrix = mobj.matrix_basis.copy()
+    print("apply matrix", matrix)
+    for vert in mobj.data.vertices:
+        vert.co = matrix @ vert.co
+
+    mobj.matrix_basis.identity()
+    return mobj
+
+
+class Upcut(bpy.types.Operator):
+    bl_idname = "object.furcut_upcut"
     bl_label = "Furcut test"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -55,36 +91,23 @@ class TestTest(bpy.types.Operator):
     )
 
     def execute(self, context):
-
         print("Bingo execute")
-
-        #bpy.ops.object.mode_set(mode='EDIT')
-        #obj = bpy.context.edit_object
         obj = bpy.context.selected_objects[0]
-        tris = blender_utils.faces_from_mesh(obj, mathutils.Matrix.Diagonal((1000,1000,1000,0)))
+        mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+        cncworkcollection = fetchcreatecollection("cncwork", empty=True)
+        print("calling placejobmeshobject")
+        mobj = placejobmeshobject(cncworkcollection, "jobmesh", mesh)
 
+        print("mobj verts", len(mobj.data.vertices))
+        tris = blender_utils.faces_from_mesh(mobj, mathutils.Matrix.Diagonal((1000,1000,1000,0)))
         tbarmesh = TriangleBarMesh()
         tbarmesh.BuildTriangleBarmesh(tris)
-        print(len(tbarmesh.nodes))
-        #tboxing = MakeTriangleBoxing(self.tbarmesh)
-        #hitreg = [0]*len(self.tbarmesh.bars)
-        #nhitreg = 0
-
-        print(tbarmesh.xlo, tbarmesh.xhi)
-        print(tbarmesh.ylo, tbarmesh.yhi)
+        print("nodes", len(tbarmesh.nodes))
+        print("xrg", tbarmesh.xlo, tbarmesh.xhi)
+        print("yrg", tbarmesh.ylo, tbarmesh.yhi)
+        print("zrg", tbarmesh.zlo, tbarmesh.zhi)
         zss = sliceit(tbarmesh)
-
-        d = 0.1 
-        minx = tbarmesh.xlo - d
-        maxx = tbarmesh.xhi + d
-        miny = tbarmesh.ylo - d
-        maxy = tbarmesh.yhi + d
-
-        cx = (minx + maxx)*0.5*0.001
-        cy = (miny + maxy)*0.5*0.001
-
         zslicecollection = fetchcreatecollection("zslices")
-                
         for i, zs in enumerate(zss):
             mesh = bpy.data.meshes.new("ding%d" % i)
             mvertices = zs
@@ -95,6 +118,7 @@ class TestTest(bpy.types.Operator):
             zslicecollection.objects.link(mobj)
 
         return {'FINISHED'}
+
 
 discrad = 29.62/2
 discheight = 1.6
