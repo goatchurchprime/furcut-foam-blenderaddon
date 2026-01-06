@@ -30,7 +30,7 @@ else:
     from . import op_post
 
 # need to edit the __init__.py file to trigger reload when addin by selecting "seams to sewing patterns" from edit->preferences and then disable and re-enable
-print("RELOADING FURCUT ADDON *** YdfY ***")
+print("RELOADING FURCUT ADDON *** YdddaddssdssddssdfssdjdssdsY ***")
 
 import bpy
 from bpy.types import Menu
@@ -50,7 +50,7 @@ class VIEW3D_MT_object_furcut_menu(Menu):
         layout.operator("object.furcut_placer", text="Furcut placer", icon="OUTLINER_DATA_SURFACE")
         layout.operator("object.furcut_layer", text="Furcut layer", icon="OUTLINER_DATA_SURFACE")
         #layout.operator("object.furcut_test", text="Furcut foam test", icon="OUTLINER_DATA_SURFACE")
-        layout.operator("object.furcut_upcut", text="Furcut foam upcut", icon="OUTLINER_DATA_SURFACE")
+        #layout.operator("object.furcut_upcut", text="Furcut foam upcut", icon="OUTLINER_DATA_SURFACE")
         layout.operator("object.furcut_upslice", text="Furcut foam upslice", icon="OUTLINER_DATA_SURFACE")
         layout.operator("object.furcut_post", text="Furcut foam post", icon="OUTLINER_DATA_SURFACE")
         layout.separator()

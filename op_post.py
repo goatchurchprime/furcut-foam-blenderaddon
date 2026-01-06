@@ -51,7 +51,7 @@ class PostProc(bpy.types.Operator):
         uptoolpath = bpy.data.collections[bpy.data.collections.find("uptoolpath")]
 
         zclear = 25.4+2
-        z0 = 0
+        ztop = 25.4
         nslab = 51
 
         fname = "/home/julian/repositories/furcut/ncfiles/slab%d.nc" % nslab
@@ -60,12 +60,13 @@ class PostProc(bpy.types.Operator):
 
         fout.write("""%
 N10 G90 G94 G17 G21
-G54 ( workpiece offset )
+G55 ( workpiece offset )
 N35 M9
 N40 T1 M6
 N45 S5000 M3
 N55 M8 
-G1 F4000
+G1 Z30F4000
+
 """)
 
         topslide = 4
@@ -75,13 +76,12 @@ G1 F4000
             for p in vxs:
                 fout.write("X%.2f Y%.2f Z%.2f\n" % (p[0], p[1], p[2]))
             if topslide:
-                print("vxs", vxs)
-                fout.write("Z0\n")
+                fout.write("Z%.3f\n" % ztop)
                 v = P2.ZNorm(P2(p[0] - vxs[0][0], p[1] - vxs[0][1]))*topslide
                 fout.write("X%.2f Y%.2f\n" % (p[0] + v.u, p[1] + v.v))
             fout.write("Z%.2f\n" % (zclear))
     
-        fout.write("""X400Z30
+        fout.write("""X280Z40
 N2670 M9
 N2680 G90
 N2695 M30

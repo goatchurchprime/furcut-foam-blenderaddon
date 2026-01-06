@@ -33,6 +33,7 @@ def fetchcreatecollection(name, empty=True):
         if empty:
             for o in mcoll.objects:
                 mcoll.objects.unlink(o)
+                bpy.data.objects.remove(o, do_unlink=True)
     return mcoll
 
 
@@ -48,6 +49,24 @@ class UpLayer(bpy.types.Operator):
         min=0,
         soft_max=0.5
     )
+    zlo: FloatProperty(
+        name="ZLow position",
+        description="Lowest point with the tool hitting the surface",
+        default=2.0,
+        min=-30,
+        soft_max=30
+    )
+    zstep: FloatProperty(
+        name="zstep",
+        description="ZStep up for cut layers",
+        default=2.0,
+        min=0.1,
+        soft_max=30
+    )
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self, width=250)
 
     def execute(self, context):
         print("Bingo execute")
@@ -55,6 +74,8 @@ class UpLayer(bpy.types.Operator):
         print("calling placejobmeshobject")
         mobj = cncworkcollection.objects[0]
         print("mobj verts", len(mobj.data.vertices))
+        stockpt = cncworkcollection.objects[1].data.vertices[2].co
+        print("stockpt", stockpt) # should match the xrg and yrg below
         tris = blender_utils.faces_from_mesh(mobj, mathutils.Matrix.Diagonal((1000,1000,1000,0)))
         tbarmesh = TriangleBarMesh()
         tbarmesh.BuildTriangleBarmesh(tris)
@@ -62,30 +83,43 @@ class UpLayer(bpy.types.Operator):
         print("xrg", tbarmesh.xlo, tbarmesh.xhi)
         print("yrg", tbarmesh.ylo, tbarmesh.yhi)
         print("zrg", tbarmesh.zlo, tbarmesh.zhi)
-        zss = sliceit(tbarmesh)
+
+        zss = sliceit(tbarmesh, self.zlo, self.zstep)
         zslicecollection = fetchcreatecollection("zslices")
+        addlooptocollection(zslicecollection, "dingL", stockoffsz(self.zlo*0.001, stockpt, discrad*0.001))
         for i, zs in enumerate(zss):
-            mesh = bpy.data.meshes.new("ding%d" % i)
-            mvertices = zs
-            medges = [ (a, a+1)  for a in range(len(zs)-1) ]
-            mesh.from_pydata(mvertices, medges, [])
-            mobj = bpy.data.objects.new(mesh.name, mesh)
-            mobj.display_type = 'WIRE'
-            zslicecollection.objects.link(mobj)
+            addlooptocollection(zslicecollection, "ding%d" % i, zs)
+
+        uptoolpath = fetchcreatecollection("uptoolpath", empty=True)
+        print("clearing uptoolpath", uptoolpath)
         return {'FINISHED'}
 
+def stockoffsz(z, pt, rad):
+    cossin = [ (1.0, 0.0) ] + [ (math.cos(math.radians(d)), math.sin(math.radians(d)))  for d in range(10, 90, 10) ] + [ (0.0, 1.0) ]
+    szs = [ ]
+    szs.extend([ (-rad*c, pt[1]+rad*s, z)  for c, s in cossin ]) 
+    szs.extend([ (pt[0]+rad*s, pt[1]+rad*c, z)  for c, s in cossin ]) 
+    szs.extend([ (pt[0]+rad*c, -rad*s, z)  for c, s in cossin ]) 
+    szs.extend([ (-rad*s, -rad*c, z)  for c, s in cossin ]) 
+    return szs
 
-discrad = 29.62/2
+def addlooptocollection(collection, name, mvertices):
+    mesh = bpy.data.meshes.new(name)
+    medges = [ (a, a+1)  for a in range(len(mvertices)-1) ] + [ (len(mvertices)-1, 0) ]
+    mesh.from_pydata(mvertices, medges, [])
+    mobj = bpy.data.objects.new(mesh.name, mesh)
+    mobj.display_type = 'WIRE'
+    collection.objects.link(mobj)
+
+discrad = 38.5/2
 discheight = 1.6
-zlo = 0
 zhi = 25.4
 cgoffsets = [ (1,0,0,0,False), (2.1,8,7.8,4,False), (3.2,16,16,8,True), 
               (4,23,23,8,True), (5.1,28,28,8,True)
                ]
-zstep, hthickness, vthickness, contourext, trimboundary = cgoffsets[0]
-zstep = 5
+Dzstep, hthickness, vthickness, contourext, trimboundary = cgoffsets[0]
 
-def sliceit(tbarmesh):
+def sliceit(tbarmesh, zlo, zstep):
     zsteps = int((zhi - zlo)/zstep + 0.5)
     zlevels = [ Along(zi/zsteps, zlo, zhi)  for zi in range(zsteps+1) ]
     tdiscrad = discrad + hthickness

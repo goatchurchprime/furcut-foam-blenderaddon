@@ -37,6 +37,7 @@ def fetchcreatecollection(name, empty=True):
         if empty:
             for o in mcoll.objects:
                 mcoll.objects.unlink(o)
+                bpy.data.objects.remove(o, do_unlink=True)
     pass
     return mcoll
 
@@ -164,6 +165,11 @@ def sliceup(clayers, contourstepover):
         l0 += contourstepover
     return pcsslices
 
+def ptlastpt(pcs):
+    i = len(pcs)-1
+    while not pcs[i][0]:
+        i -= 1
+    return pcs[i][0] 
 
 class Upslice(bpy.types.Operator):
     bl_idname = "object.furcut_upslice"
@@ -187,19 +193,29 @@ class Upslice(bpy.types.Operator):
     def execute(self, context):
         print("Bongo execute")
         zslicecollection = fetchcreatecollection("zslices", empty=False)
+        stockpt = bpy.data.collections[bpy.data.collections.find("cncwork")].objects[1].data.vertices[2]
         uptoolpath = fetchcreatecollection("uptoolpath", empty=True)
-        
+
         clayers = [ ]
         for zslice in zslicecollection.objects:
             cont = extractcurve(zslice)
             clayers.append(convertconseq(cont))
+
+        stocktooloffset = (38.5/2 + 1)*0.001
+        stockpt = bpy.data.collections[bpy.data.collections.find("cncwork")].objects[1].data.vertices[2].co
+        sideclearlayer = convertconseq([ P3(-stocktooloffset, -stocktooloffset, 0), P3(stockpt[0]+stocktooloffset, -stocktooloffset, 0), P3(stockpt[0]+stocktooloffset, stockpt[1]+stocktooloffset, 0), P3(-stocktooloffset, stockpt[1]+stocktooloffset, 0), P3(-stocktooloffset, -stocktooloffset, 0)])
 
         contourstepover = 6*0.001
         forcevertstepdist = 12*0.001
         retractdist = 4*0.001
         pcsslices = sliceup(clayers, contourstepover)
         
-        for i, pcs in enumerate(pcsslices):
+        for i in range(len(pcsslices)):
+            pcs = pcsslices[i]
+            pcsprev = pcsslices[i-1 if i else len(pcsslices)-1]
+            pcsnext = pcsslices[i+1 if i!=len(pcsslices)-1 else 0]
+            tanvec = (P2.ConvertLZ(ptlastpt(pcsprev)), P2.ConvertLZ(ptlastpt(pcsnext)))
+
             pth = [ ]
             for pc in pcs:
                 if pc[0]:
@@ -207,6 +223,8 @@ class Upslice(bpy.types.Operator):
                         pth.append(P3.ConvertCZ(pth[-1], pc[0].z+retractdist))
                         print("Retract at", pc[0])
                     pth.append(pc[0])
+
+            pth.insert(0, P3.ConvertCZ(pointclosest(pth[0], sideclearlayer, tanvec)[0], pth[0].z))
 
             mesh = bpy.data.meshes.new("dong%d" % i)
             mvertices = pth

@@ -55,13 +55,18 @@ def placejobmeshobject(collection, mesh, hclear):
     mobj = getmeshwithname(collection, "jobmesh", mesh)
     mobj.location = (0,0,0)
     mobj.rotation_mode = 'XYZ'
-    facemax = max((p.area, p)  for p in mobj.data.polygons)[1]
+    facemax = max(mobj.data.polygons, key=lambda X: X.area)
+    print("Normal direction ", facemax.normal, facemax.center)
     if (facemax.normal - Vector((-1,0,0))).length < 1e-6:
         mobj.rotation_euler = (0,math.radians(-90),0)
     elif (facemax.normal - Vector((1,0,0))).length < 1e-6:
         mobj.rotation_euler = (0,math.radians(90),0)
+    elif (facemax.normal - Vector((0,0,-1))).length < 1e-6:
+        mobj.rotation_euler = (0,0,0)
+    elif (facemax.normal - Vector((0,0,1))).length < 1e-6:
+        mobj.rotation_euler = (0,math.radians(180),0)
     else:
-        print("Unknown normal direction ", facemax.normal)
+        print("*** Unknown normal direction ", facemax.normal)
 
     xyareas = [ ]
     for d in range(0,90,5):
@@ -70,7 +75,7 @@ def placejobmeshobject(collection, mesh, hclear):
         xyareas.append((d, xyrange([ (matrix @ vert.co)  for vert in mobj.data.vertices ])))
     X = min(xyareas, key=lambda X: ((X[1][1]-X[1][0])*(X[1][3]-X[1][2])))
     rot90 = ((X[1][1]-X[1][0]) < (X[1][3]-X[1][2]))
-    mobj.rotation_euler.z = X[0] + (90 if rot90 else 0)
+    mobj.rotation_euler.z = math.radians(X[0] + (90 if rot90 else 0))
     print("matrix before loc", rot90, mobj.rotation_euler)
     print("X", X)
     mobj.location = -facemax.center
@@ -95,6 +100,7 @@ def placejobmeshobject(collection, mesh, hclear):
     stockmesh = bpy.data.meshes.new("stock")
     sobj = getmeshwithname(collection, "stockmesh", stockmesh)
     scorn = (hclear*2 + lrg[1]-lrg[0], hclear*2 + lrg[3]-lrg[2])
+    print("Stock dimensions width", scorn[0]*1000, "height", scorn[1]*1000)
     svertices = [ (0,0,0), (scorn[0],0,0), (scorn[0],scorn[1],0), (0,scorn[1],0) ]
     sedges = [ (0,1), (1,2), (2,3), (3,0) ]
     stockmesh.from_pydata(svertices, sedges, [])

@@ -33,6 +33,7 @@ def fetchcreatecollection(name, empty=True):
         if empty:
             for o in mcoll.objects:
                 mcoll.objects.unlink(o)
+                bpy.data.objects.remove(o, do_unlink=True)
     return mcoll
 
 def placejobmeshobject(collection, name, mesh):
