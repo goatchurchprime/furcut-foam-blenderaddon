@@ -29,8 +29,12 @@ else:
     from . import op_upslice
     from . import op_post
 
+#import sys
+#sys.path.append("/home/julian/repositories/furcut/furcut-foam-blenderaddon/")
+#from barmesh.basicgeo import I1, Partition1, P3, P2, Along
+
 # need to edit the __init__.py file to trigger reload when addin by selecting "seams to sewing patterns" from edit->preferences and then disable and re-enable
-print("RELOADING FURCUT ADDON *** YdddaddssdssddssdfssdjdssdsY ***")
+print("RELOADING FURCUT ADDON *** YdddaddddssddssdddsddsdssdfssddssjdssdsY ***")
 
 import bpy
 from bpy.types import Menu

@@ -69,6 +69,7 @@ def clengthalong(l, constseq):
     assert False
 
 def pointclosest(p, constseq, tanvec=None):
+    assert (p != None)
     tanvecperp = None
     if tanvec:
         tanvecperp = P2.APerp(tanvec[1] - tanvec[0])
@@ -109,67 +110,79 @@ def pointclosest(p, constseq, tanvec=None):
         prevcl = cl
     return pc, l
 
+
+class ContPointColumn:
+    def __init__(self, layernumber, lengalong, cpt):
+        self.layernumber = layernumber
+        self.lengalong = lengalong
+        self.cpt = cpt
+    
 def trackpcsup(pcsprev, i0, l0, clayers, pcsslices):
+    print("trackpcsup", len(pcsprev), len(clayers))
     pcs = [ ]
     for i in range(0, i0):
-        pcs.append((None, pcsprev[i][1]))
+        pcs.append(ContPointColumn(i, pcsprev[i].lengalong if pcsprev else 0, None))
     cp0 = clengthalong(l0, clayers[i0])
-    pcs.append((cp0, l0))
+    pcs.append(ContPointColumn(i0, l0, cp0))
     for i in range(i0+1, len(clayers)):
         clayer = clayers[i]
-        cp, l = pointclosest(pcs[-1][0], clayer)
-        while pcsslices and l < pcsslices[-1][i][1] and abs(l + clayer[-1][2] - pcsslices[-1][i][1]) < abs(l - pcsslices[-1][i][1]):
+        cp, l = pointclosest(pcs[-1].cpt, clayer)
+        while pcsslices and l < pcsslices[-1][i].lengalong and abs(l + clayer[-1][2] - pcsslices[-1][i].lengalong) < abs(l - pcsslices[-1][i].lengalong):
             l += clayer[-1][2]
-        pcs.append((cp, l))
+        pcs.append(ContPointColumn(i, l, cp))
     return pcs
 
-def sliceup(clayers, contourstepover):
+
+def sliceup(clayers, di, contourstepover):
     l0 = 0
     pcsslices = [ ]
     mincontourstepover = contourstepover*0.3
     #mincontourstepover = 0 # disable
     maxcontourstepover = contourstepover*1.5
-    l0max = clayers[0][-1][2]
+    l0max = clayers[di][-1][2]
     while l0 < l0max:
-        pcs = trackpcsup([], 0, l0, clayers, pcsslices)
+        pcs = trackpcsup([], di, l0, clayers, pcsslices)
         pcsnextstack = [ pcs ]
         while pcsnextstack:
             pcsprev = pcsslices[-1] if pcsslices else None
             pcs = pcsnextstack.pop()
             i0 = -1
             if pcsprev:
-                for i in range(1, len(clayers)-1):
-                    if pcs[i][0] and pcs[i][1] - pcsprev[i][1] > maxcontourstepover:
+                for i in range(di+1, len(clayers)-1):
+                    if pcs[i].cpt and pcs[i].lengalong - pcsprev[i].lengalong > maxcontourstepover:
                         i0 = i
                         break
             if i0 != -1:
-                divs = int((pcs[i0][1] - pcsprev[i0][1])/contourstepover + 0.5)
+                divs = int((pcs[i0].lengalong - pcsprev[i0].lengalong)/contourstepover + 0.5)
                 pcsnextstack.append(pcs)
                 if divs > 2:
-                    print("divs", i0, divs, (pcsprev[i0][1], pcs[i0][1]))
+                    print("divs", i0, divs, (pcsprev[i0].lengalong, pcs[i0].lengalong))
                 for j in range(divs-1, 0, -1):
-                    li = Along(j/divs, pcsprev[i0][1], pcs[i0][1])
+                    li = Along(j/divs, pcsprev[i0].lengalong, pcs[i0].lengalong)
                     pcsi = trackpcsup(pcsprev, i0, li, clayers, pcsslices)
                     pcsnextstack.append(pcsi)
                 continue
-
-            if pcsprev and (mincontourstepover != 0):
-                for i in range(len(clayers)-1, 1, -1):
-                    if (pcs[i][1] - pcsprev[i][1] < mincontourstepover and pcsprev[i][0] is not None) and \
-                       (pcs[i-1][1] - pcsprev[i-1][1] < mincontourstepover and pcsprev[i-1][0] is not None):
-                       pcs[i] = (None, pcsprev[i][1])
-                    else:
-                        break
             pcsslices.append(pcs)
-
         l0 += contourstepover
+
+
+    assert (di == 1)  # project back out to the outer contour curve
+    for i in range(len(pcsslices)):
+        pcs = pcsslices[i]
+        pcsprev = pcsslices[i-1 if i else len(pcsslices)-1]
+        pcsnext = pcsslices[i+1 if i!=len(pcsslices)-1 else 0]
+        tanvec = (P2.ConvertLZ(ptlastpt(pcsprev)), P2.ConvertLZ(ptlastpt(pcsnext)))
+        cpsideclearlayer, lsideclearlayer = pointclosest(pcs[di].cpt, clayers[0], tanvec)
+        pcs[0] = ContPointColumn(0, lsideclearlayer, cpsideclearlayer)
     return pcsslices
 
 def ptlastpt(pcs):
     i = len(pcs)-1
-    while not pcs[i][0]:
+    while not pcs[i].cpt:
         i -= 1
-    return pcs[i][0] 
+    return pcs[i].cpt 
+
+toolrad = (38.5/2)*0.001
 
 class Upslice(bpy.types.Operator):
     bl_idname = "object.furcut_upslice"
@@ -201,30 +214,16 @@ class Upslice(bpy.types.Operator):
             cont = extractcurve(zslice)
             clayers.append(convertconseq(cont))
 
-        stocktooloffset = (38.5/2 + 1)*0.001
         stockpt = bpy.data.collections[bpy.data.collections.find("cncwork")].objects[1].data.vertices[2].co
-        sideclearlayer = convertconseq([ P3(-stocktooloffset, -stocktooloffset, 0), P3(stockpt[0]+stocktooloffset, -stocktooloffset, 0), P3(stockpt[0]+stocktooloffset, stockpt[1]+stocktooloffset, 0), P3(-stocktooloffset, stockpt[1]+stocktooloffset, 0), P3(-stocktooloffset, -stocktooloffset, 0)])
+        sideclearlayer = clayers[0]
 
         contourstepover = 6*0.001
         forcevertstepdist = 12*0.001
-        retractdist = 4*0.001
-        pcsslices = sliceup(clayers, contourstepover)
+        pcsslices = sliceup(clayers, 1, contourstepover)
         
+        pths = [ ]
         for i in range(len(pcsslices)):
-            pcs = pcsslices[i]
-            pcsprev = pcsslices[i-1 if i else len(pcsslices)-1]
-            pcsnext = pcsslices[i+1 if i!=len(pcsslices)-1 else 0]
-            tanvec = (P2.ConvertLZ(ptlastpt(pcsprev)), P2.ConvertLZ(ptlastpt(pcsnext)))
-
-            pth = [ ]
-            for pc in pcs:
-                if pc[0]:
-                    if pth and (P2.ConvertLZ(pth[-1] - pc[0]).Len() > forcevertstepdist):
-                        pth.append(P3.ConvertCZ(pth[-1], pc[0].z+retractdist))
-                        print("Retract at", pc[0])
-                    pth.append(pc[0])
-
-            pth.insert(0, P3.ConvertCZ(pointclosest(pth[0], sideclearlayer, tanvec)[0], pth[0].z))
+            pth = [ pc.cpt  for pc in pcsslices[i]  if pc.cpt ]
 
             mesh = bpy.data.meshes.new("dong%d" % i)
             mvertices = pth
@@ -234,5 +233,62 @@ class Upslice(bpy.types.Operator):
             mobj.display_type = 'WIRE'
             uptoolpath.objects.link(mobj)
 
+            pths.append(pth)  
+
+
         return {'FINISHED'}
+
+#lineslice
+#circleslice
+#subtractrange
+
+# then we have a stack of these per segment along the line, including the stepin at the top
+# the stacks start at the top but don't go all the way down
+# Stack gets more full of material as we go down, so we look for the lowest pass in each stack that is within the engagement angle
+# When we select a sequence stack we clear it and everything above
+# Till we have passed along each.
+# Update the adjacent stacks as we go along
+# Choose the meatiest stack for next where it goes in the most for the least cusp engagement
+# Engagement should be in direction of the motion
+# Undercuts to be cut separately
+#We look for a pass through them that picks the lowest point in each stack
+
+def subarc(arcsegs, alo, ahi):
+    if alo < 0:
+        subarc(arcsegs, 360+alo, 360)
+        alo = 0
+    if ahi > 360:
+        subarc(arcsegs, 0, ahi-360)
+        ahi = 360
+    i = len(arcsegs) - 2
+    while i >= 0 and arcsegs[i+1] > alo:
+        if arcsegs[i] < ahi:
+            if alo > arcsegs[i]:
+                if ahi < arcsegs[i+1]:
+                    arcsegs.insert(i, arcsegs[i+1])
+                    arcsegs.insert(i, arcsegs[i+1])
+                    arcsegs[i+2] = ahi
+                arcsegs[i+1] = alo
+            elif ahi < arcsegs[i+1]:
+                arcsegs[i] = ahi
+            else:
+                del arcsegs[i:i+2]
+        i -= 2
+
+class arcengagement:
+    def __init__(self, pt, rad, stockpt):
+        self.pt = pt
+        self.rad = rad
+        self.arcsegs = [ 0.0, 360.0 ]
+        self.halfplaneslice(P2(-1,0), 0)
+        self.halfplaneslice(P2(0,1), stockpt[1])
+        self.halfplaneslice(P2(1,0), stockpt[0])
+        self.halfplaneslice(P2(0,-1), 0)
+    def halfplaneslice(self, normout, d):
+        a = (d - P2.Dot(normout, self.pt))/self.rad
+        if -1<a<1:
+            aa = math.degrees(math.acos(a))
+            an = normout.Arg()
+            subarc(self.arcsegs, an-aa, an+aa)
+
 
