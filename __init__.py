@@ -34,7 +34,7 @@ else:
 #from barmesh.basicgeo import I1, Partition1, P3, P2, Along
 
 # need to edit the __init__.py file to trigger reload when addin by selecting "seams to sewing patterns" from edit->preferences and then disable and re-enable
-print("RELOADING FURCUT ADDON *** Ydddassdsdsddsdsdddadddddddssssdddssssddsddsddsdds-dddssdfssdddsdsssjdssdsY ***")
+print("RELOADING FURCUT ADDON *** YdssssssssssssssssssssssssssY ***")
 
 import bpy
 from bpy.types import Menu
