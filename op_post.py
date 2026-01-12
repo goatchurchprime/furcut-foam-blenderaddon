@@ -69,7 +69,7 @@ G1 Z30F4000
 
 """)
 
-        topslide = 4
+        topslide = 4  # this can be guided by the top rim engagement
         for pth in uptoolpath.objects:
             vxs = extractcurve(pth)
             fout.write("X%.2f Y%.2f\n" % (vxs[0][0], vxs[0][1]))
