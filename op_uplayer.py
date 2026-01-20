@@ -113,7 +113,7 @@ def addlooptocollection(collection, name, mvertices):
 
 discrad = 38.5/2
 discheight = 1.6
-zhi = 25.4
+zhi = 25.4-0.1
 cgoffsets = [ (1,0,0,0,False), (2.1,8,7.8,4,False), (3.2,16,16,8,True), 
               (4,23,23,8,True), (5.1,28,28,8,True)
                ]

@@ -110,7 +110,15 @@ def pointclosest(p, constseq, tanvec=None):
         prevcl = cl
     return pc, l
 
-
+def pointinside(p, constseq):
+    s = 0
+    for p0, p1, cl in constseq:
+        if (p0[1] > p[1]) != (p1[1] > p[1]):
+            lam = (p[1] - p0[1])/(p1[1] - p0[1])
+            cx = Along(lam, p0[0], p1[0])
+            if cx > p[0]:
+                s += 1
+    return (s%2) == 1
 
 class ContPointColumn:
     def __init__(self, layernumber, lengalong, cpt, rampdrop=0.0):
@@ -129,103 +137,15 @@ class ContPointColumn:
                     self.arcengagements[-1].samearcslice(ptprev)
     
 
-class CutPathColumns:
-    def __init__(self, pcs, maxgap, mingap, rampgap, clayers, toolrad, stockpt):
-        i0 = 0
-        while not (pcs[i0] and pcs[i0].cpt):
-            i0 += 1
-        self.pcs = [ pcs[i0] ]
-        for i in range(i0+1, len(pcs)):
-            prevcpt = self.pcs[-1].cpt
-            gap = (pcs[i].cpt - prevcpt).LenLZ()
-            if gap > maxgap:
-                subdivs = int(gap/maxgap) + 2
-                for j in range(1, subdivs):
-                    lam = j*1.0/subdivs                    
-                    mpt = Along(lam, prevcpt, pcs[i].cpt)
-                    rampdrop = 0 if gap > rampgap else (pcs[i].cpt.z - mpt.z)
-                    mpt = P3.ConvertCZ(mpt, pcs[i].cpt.z)
-                    self.pcs.append(ContPointColumn(pcs[i].layernumber, -1, mpt, rampdrop))
-            if gap > mingap:
-                self.pcs.append(pcs[i])
-        self.prevclearpc = None
-        
-        pcprev = None
-        for pc in self.pcs:
-            pc.setcolumnarcengagements(clayers, toolrad, stockpt, P2.ConvertLZ(pcprev.cpt) if pcprev else None)
-            pcprev = pc
-
-    def cutpasseng(self, maxengage):
-        self.ipc = [ ]
-        self.iscore = 0
-        for j in range(len(self.pcs)):
-            pc = self.pcs[j]
-            i = len(pc.arcengagements)-1
-            while i > 0 and (j == 0 or pc.arcengagements[i-1].z >= zcurrcut) and pc.arcengagements[i].engagement() < maxengage:
-                i -= 1
-            zcurrcut = pc.arcengagements[i].z
-            self.iscore += len(pc.arcengagements) - i
-            self.ipc.append(i)
-
-    def setxyrg(self):
-        def mergerg(rg1, rg2):
-            if rg1.hi == -10:
-                return rg2
-            if rg2.hi == -10:
-                return rg1
-            return I1(min(rg1.lo, rg2.lo), max(rg1.hi, rg2.hi))
-        xrg, yrg = I1(0,-10), I1(0,-10)
-        for j in range(len(self.pcs)):
-            xrg = mergerg(xrg, self.pcs[j].arcengagements[0].xyrgpt(True))
-            yrg = mergerg(yrg, self.pcs[j].arcengagements[0].xyrgpt(False))
-        self.xrg, self.yrg = xrg, yrg
-
-    def sliceoutarc(self, pt):
-        bchange = False
-        for pc in self.pcs:
-            i = len(pc.arcengagements)-1
-            while i >= 0 and pc.arcengagements[i].z >= pt.z:
-                bchange = pc.arcengagements[i].samearcslice(P2.ConvertLZ(pt)) or bchange
-                i -= 1
-        return bchange
-
-    def extractpath(self, withrampdrop):
-        pth = [ ]
-        nextprevclear = None
-        nextprevclearj = 0
-        for j in range(len(self.ipc)):
-            pc = self.pcs[j]
-            i = self.ipc[j]
-            pthz = pc.arcengagements[i].z
-            if withrampdrop:
-                pthz -= pc.rampdrop
-                if len(pth) != 0 and pthz < pth[-1].z:
-                    pthz = pth[-1].z
-            pth.append(P3.ConvertGZ(pc.arcengagements[i].pt, pthz))
-            if i == 0 and (nextprevclear == None or j == nextprevclearj+1):
-                nextprevclear = pc.arcengagements[0].pt
-                nextprevclearj = j
-            del pc.arcengagements[i:]
-        if self.prevclearpc and len(pth) != 0:
-            pth.insert(0, P3.ConvertGZ(self.prevclearpc, pth[0].z))
-        self.prevclearpc = nextprevclear
-        self.ipc.clear()
-        for j in range(len(self.pcs)-1, -1, -1):
-            if len(self.pcs[j].arcengagements) == 0:
-                del self.pcs[j]
-        return pth
-
 
 class CutPathColumns2:
-    def __init__(self, pcs, maxgap, mingap, rampgap, clayers, toolrad, stockpt):
+    def __init__(self, pcs, maxgap, mingap, rampgap, clayers, toolrad, shaftrad, stockpt):
         i0 = 0
         while not (pcs[i0] and pcs[i0].cpt):
             i0 += 1
-        shaftrad = max(4*0.001, toolrad*0.667)
-        print("ShaftRad", shaftrad)
         self.toolrad = toolrad
         self.pscs = [ ArcEngagement(P2.ConvertLZ(pcs[i0].cpt), pcs[i0].cpt.z, shaftrad, stockpt) ]
-        
+        self.clayers = clayers
 
         for i in range(i0+1, len(pcs)):
             prevcpt = P3.ConvertGZ(self.pscs[-1].pt, self.pscs[-1].z)
@@ -239,21 +159,33 @@ class CutPathColumns2:
                     mpt = P3.ConvertCZ(mpt, pcs[i].cpt.z)
                     self.pscs.append(ArcEngagement(P2.ConvertLZ(mpt), mpt.z, shaftrad, stockpt))
                     self.pscs[-1].rampdrop2 = rampdrop
-            if gap > mingap:
+            if True or gap > mingap:
                 self.pscs.append(ArcEngagement(P2.ConvertLZ(pcs[i].cpt), pcs[i].cpt.z, shaftrad, stockpt))
         self.clearedpscs = -1
+        self.prevfollowoutundercutretract = None
 
     def cutpasseng(self, maxengage):
         self.engagedpscs = self.clearedpscs + 1
         while self.engagedpscs < len(self.pscs) and self.pscs[self.engagedpscs].engagement() == 0.0:
             self.engagedpscs += 1
 
+
+        self.nextfollowoutundercutretract = None
+        if 0 < self.engagedpscs < len(self.pscs):
+            ptc = self.pscs[self.engagedpscs - 1].pt
+            for clayerabove in reversed(self.clayers):
+                if self.pscs[self.engagedpscs - 1].z >= clayerabove[0][0][2]:
+                    break
+                if pointinside(ptc, clayerabove):
+                    self.nextfollowoutundercutretract = pointclosest(P3.ConvertGZ(ptc, 0), clayerabove)[0]
+                    ptc = P2.ConvertLZ(self.nextfollowoutundercutretract)
+                
     def iscore2(self, pt):
         segi = self.engagedpscs - 1 - self.clearedpscs
         if segi == 0:
             return -1
         linkdist = (self.pscs[max(0, self.clearedpscs)].pt - pt).Len()
-        return segi + max(0, 20-linkdist*1000)*2
+        return segi + max(0, 20-linkdist*300)*2
 
     def setxyrg(self):
         def mergerg(rg1, rg2):
@@ -275,11 +207,23 @@ class CutPathColumns2:
                 bchange = self.pscs[j].diffarcslice(P2.ConvertLZ(pt), self.toolrad) or bchange
         return bchange
 
-    def extractpath(self, D):
-        pth = [ ]
+    def extractpath(self, withrampdrop):
+        pth = [ ]            
+        if self.prevfollowoutundercutretract:
+            pth.append(self.prevfollowoutundercutretract)
+
         for j in range(max(0, self.clearedpscs), self.engagedpscs):
-            pth.append(P3.ConvertGZ(self.pscs[j].pt, self.pscs[j].z - self.pscs[j].rampdrop2))
+            pth.append(P3.ConvertGZ(self.pscs[j].pt, self.pscs[j].z - (self.pscs[j].rampdrop2 if withrampdrop else 0)))
             self.pscs[j].arcsegs.clear()
+
+        if pth and self.nextfollowoutundercutretract:
+            zc = pth[-1].z
+            #for j in range(self.engagedpscs, len(self.pscs)):  # follow out along path not rising to avoid undercuts
+            pth.append(P3.ConvertCZ(self.nextfollowoutundercutretract, zc))
+            self.prevfollowoutundercutretract = pth[-1]
+        else:
+            self.prevfollowoutundercutretract = None
+
         self.clearedpscs = self.engagedpscs - 1
         return pth
 
@@ -301,7 +245,7 @@ def trackpcsup(pcsprev, i0, l0, clayers, pcsslices):
 def sliceup(clayers, di, contourstepover):
     l0 = 0
     pcsslices = [ ]
-    mincontourstepover = contourstepover*0.3
+    #mincontourstepover = contourstepover*0.3
     #mincontourstepover = 0 # disable
     maxcontourstepover = contourstepover*1.5
     l0max = clayers[di][-1][2]
@@ -321,8 +265,8 @@ def sliceup(clayers, di, contourstepover):
             if i0 != -1:
                 divs = int((pcs[i0].lengalong - pcsprev[i0].lengalong)/contourstepover + 0.5)
                 pcsnextstack.append(pcs)
-                if divs > 2:
-                    print("divs", i0, divs, (pcsprev[i0].lengalong, pcs[i0].lengalong))
+                #if divs > 2:
+                #    print("divs", i0, divs, (pcsprev[i0].lengalong, pcs[i0].lengalong))
                 for j in range(divs-1, 0, -1):
                     li = Along(j/divs, pcsprev[i0].lengalong, pcs[i0].lengalong)
                     pcsi = trackpcsup(pcsprev, i0, li, clayers, pcsslices)
@@ -367,10 +311,10 @@ class Upslice(bpy.types.Operator):
         default=True
     )
 
-    min_length: FloatProperty(
-        name="Min Edge Length",
-        description="Edges below this length will disappear",
-        default=0.02,
+    shaft_rad: FloatProperty(
+        name="Shaft Rad",
+        description="Collision place",
+        default=16,
         min=0,
         soft_max=0.5
     )
@@ -390,12 +334,12 @@ class Upslice(bpy.types.Operator):
         sideclearlayer = clayers[0]
 
         contourstepover = 6*0.001
-        forcevertstepdist = 12*0.001
+        forcevertstepdist = 9*0.001
         pcsslicesT = sliceup(clayers, 1, contourstepover)
         pcsslices = [ ]
         maxengage = 80  # degrees
         for pcsT in pcsslicesT:
-            cpc = CutPathColumns2(pcsT, maxgap=1.0*0.001, mingap=0.01*0.001, rampgap=4*0.001, clayers=clayers, toolrad=toolrad, stockpt=stockpt)
+            cpc = CutPathColumns2(pcsT, maxgap=1.0*0.001, mingap=0.01*0.001, rampgap=7*0.001, clayers=clayers, toolrad=toolrad, shaftrad=self.shaft_rad*0.001, stockpt=stockpt)
             cpc.cutpasseng(maxengage)
             cpc.setxyrg()
             pcsslices.append(cpc)
@@ -403,7 +347,7 @@ class Upslice(bpy.types.Operator):
         slicestodraw = [ ]
         withrampdrop = True
         prevpt = P2(0,0)
-        for t in range(320):
+        for t in range(920):
             bestcut = max(range(len(pcsslices)), key=lambda X:pcsslices[X].iscore2(prevpt))
             #bestcut = max(range(47-10, 47+10), key=lambda X:pcsslices[X].iscore)
             print("bestcut", bestcut, pcsslices[bestcut].iscore2(prevpt))
@@ -424,7 +368,7 @@ class Upslice(bpy.types.Operator):
             for i in range(len(pcsslices)):
                 cpc = pcsslices[i]
                 #print(i, cpc.xrg, cpc.yrg)
-                if (i != bestcut) and (cpc.xrg.lo < pxrg.hi and pxrg.lo < cpc.xrg.hi) and (cpc.yrg.lo < pyrg.hi and pyrg.lo < cpc.yrg.hi):
+                if (cpc.xrg.lo < pxrg.hi and pxrg.lo < cpc.xrg.hi) and (cpc.yrg.lo < pyrg.hi and pyrg.lo < cpc.yrg.hi):
                     bchange = False
                     for pt in pth:
                         bchange = pcsslices[i].sliceoutarc(pt) or bchange
@@ -447,11 +391,12 @@ class Upslice(bpy.types.Operator):
             mobj.display_type = 'WIRE'
             uptoolpath.objects.link(mobj)
 
-        #slicestodraw = range(len(pcsslices))
-        #for i in slicestodraw:
-        #    cpc = pcsslices[i]
-        #    for ae in cpc.pscs:
-        #        ae.makeengementmesh(uptoolpath)
+        if False: # draw the engagement arcs
+            slicestodraw = range(len(pcsslices))
+            for i in slicestodraw:
+                cpc = pcsslices[i]
+                for ae in cpc.pscs:
+                    ae.makeengementmesh(uptoolpath)
 
         return {'FINISHED'}
 
@@ -500,6 +445,7 @@ class ArcEngagement:
         self.halfplaneslice(P2(1,0), stockpt[0])
         self.halfplaneslice(P2(0,-1), 0)
         self.rampdrop2 = 0
+        
     def halfplaneslice(self, normout, d):
         a = (d - P2.Dot(normout, self.pt))/self.rad
         if a <= -1:

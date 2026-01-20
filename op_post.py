@@ -16,8 +16,8 @@ from bpy.props import (
 )
 
 
-def extractcurve(zslice):
-    averts = [P3(*v.co)*1000  for v in zslice.data.vertices]
+def extractcurve(zslice, xoffset_mirrored):
+    averts = [P3(xoffset_mirrored - v.co[0] if xoffset_mirrored else v.co[0], v.co[1], v.co[2])*1000  for v in zslice.data.vertices]
     edges = [tuple(e.vertices)  for e in zslice.data.edges]
     dedges = dict(edges)
     iv = iv0 = edges[0][0]
@@ -32,10 +32,10 @@ class PostProc(bpy.types.Operator):
     bl_label = "Furcut post"
     bl_options = {'REGISTER', 'UNDO'}
 
-    remove_poles_beforehand: BoolProperty(
-        name="yipyip",
-        description="yipee",
-        default=True
+    mirrored: BoolProperty(
+        name="mirror",
+        description="mirror",
+        default=False
     )
 
     min_length: FloatProperty(
@@ -52,9 +52,14 @@ class PostProc(bpy.types.Operator):
 
         zclear = 25.4+2
         ztop = 25.4
-        nslab = 51
+        nslab = 1
 
-        fname = "/home/julian/repositories/furcut/ncfiles/slab%d.nc" % nslab
+        stockpt = bpy.data.collections[bpy.data.collections.find("cncwork")].objects[1].data.vertices[2].co
+        sdim = "%dx%d" % (int(stockpt[0]*1000+0.75), int(stockpt[1]*1000+0.75))
+        if self.mirrored:
+            sdim = sdim + "_mirrored"
+        fname = "/home/julian/repositories/furcut/ncfiles/slab%d_%s.nc" % (nslab, sdim)
+
         fout = open(fname, "w")
         print(fname)
 
@@ -70,8 +75,9 @@ G1 Z30F4000
 """)
 
         topslide = 4  # this can be guided by the top rim engagement
+        xoffset_mirrored = stockpt[0] if self.mirrored else 0
         for pth in uptoolpath.objects:
-            vxs = extractcurve(pth)
+            vxs = extractcurve(pth, xoffset_mirrored)
             fout.write("X%.2f Y%.2f\n" % (vxs[0][0], vxs[0][1]))
             for p in vxs:
                 fout.write("X%.2f Y%.2f Z%.2f\n" % (p[0], p[1], p[2]))

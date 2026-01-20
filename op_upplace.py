@@ -50,7 +50,7 @@ def getmeshwithname(collection, name, mesh):
         mobj.data = mesh
     return mobj
     
-def placejobmeshobject(collection, mesh, hclear):
+def placejobmeshobject(collection, mesh, hclear, flipz):
     print("in placejobmeshobject")
     mobj = getmeshwithname(collection, "jobmesh", mesh)
     mobj.location = (0,0,0)
@@ -65,8 +65,15 @@ def placejobmeshobject(collection, mesh, hclear):
         mobj.rotation_euler = (0,0,0)
     elif (facemax.normal - Vector((0,0,1))).length < 1e-6:
         mobj.rotation_euler = (0,math.radians(180),0)
+    elif (facemax.normal - Vector((0,1,0))).length < 1e-6:
+        mobj.rotation_euler = (math.radians(-90),0,0)
+    elif (facemax.normal - Vector((0,-1,0))).length < 1e-6:
+        mobj.rotation_euler = (math.radians(90),0,0)
     else:
         print("*** Unknown normal direction ", facemax.normal)
+
+    if flipz:
+        mobj.rotation_euler.y += math.radians(180)
 
     xyareas = [ ]
     for d in range(0,90,5):
@@ -85,6 +92,9 @@ def placejobmeshobject(collection, mesh, hclear):
     print(mobj.location, (-X[1][2],-X[1][3],0) if rot90 else (-X[1][0],X[1][2],0))
     mobj.location.x += hclear - lrg[0]
     mobj.location.y += hclear - lrg[2]
+
+    if flipz:
+        mobj.location.z += 25.4*0.001 # hardcoded thickness
 
     #mobj.location.rotate(mobj.rotation_euler)
     #mobj.rotation_euler.rotate(mathutils.Euler((0,0,math.radians(90))))
@@ -119,6 +129,12 @@ class UpPlace(bpy.types.Operator):
         min=0,
         soft_max=0.1
     )
+    
+    flipz: BoolProperty(
+        name="flipz",
+        description="flip over",
+        default=False
+    )
 
     #def invoke(self, context, event):
     #    wm = context.window_manager
@@ -133,6 +149,8 @@ class UpPlace(bpy.types.Operator):
         layout.row()
         row = layout.row()
         row.prop(self, "horiz_clearance")
+        row = layout.row()
+        row.prop(self, "flipz")
 
     def execute(self, context):
         print("Bingo execute")
@@ -140,5 +158,5 @@ class UpPlace(bpy.types.Operator):
         mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
         cncworkcollection = fetchcreatecollection("cncwork", empty=True)
         print("calling placejobmeshobject")
-        mobj = placejobmeshobject(cncworkcollection, mesh, self.horiz_clearance)
+        mobj = placejobmeshobject(cncworkcollection, mesh, self.horiz_clearance, self.flipz)
         return {'FINISHED'}
